@@ -1,10 +1,164 @@
-from flask import Flask
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Timbre Escolar - CyL 2025/2026</title>
 
-app = Flask(__name__)
+<style>
+:root {
+    --azul: #007bff;
+    --verde: #28a745;
+    --amarillo: #ffc107;
+}
 
-@app.route('/')
-def home():
-    return "<h1>¡Hola, esta es una página web hecha con Python y Flask!</h1>"
+body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background-color: #eef2f7;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
 
-if __name__ == '__main__':
-    app.run(debug=True)
+.container {
+    background: #fff;
+    width: 420px;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+#reloj {
+    font-size: 3em;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+#estado {
+    margin-top: 15px;
+    padding: 10px;
+    border-radius: 5px;
+    font-weight: bold;
+}
+
+.activo { background: #d4edda; color: #155724; }
+.espera { background: #fff3cd; color: #856404; }
+.sonando { background: #cce5ff; color: #004085; }
+
+button {
+    margin-top: 15px;
+    background: var(--azul);
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:hover { background: #0056b3; }
+
+.horarios {
+    margin-top: 20px;
+    font-size: 0.9em;
+    color: #555;
+    text-align: left;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>🔔 Timbre Escolar</h2>
+    <div id="reloj">00:00:00</div>
+    <div id="fecha"></div>
+
+    <div id="estado" class="espera">Sistema detenido</div>
+    <button id="btnInicio">Activar Timbre Automático</button>
+
+    <div class="horarios">
+        <strong>Horas programadas:</strong><br>
+        8:30 · 9:20 · 10:15 · 11:10 · 11:30 · 12:30 · 13:25 · 14:20
+    </div>
+</div>
+
+<audio id="sonido" preload="auto"
+src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+
+<script>
+/* ================= CONFIGURACIÓN ================= */
+
+const HORAS_TIMBRE = new Set([
+    "08:30","09:20","10:15","11:10",
+    "11:30","12:30","13:25","14:20"
+]);
+
+const FESTIVOS = new Set([
+    "2025-10-13","2025-10-31","2025-12-08",
+    "2026-02-16","2026-02-17",
+    "2026-04-23","2026-04-24","2026-05-01"
+]);
+
+const CURSO_INICIO = "2025-09-15";
+const CURSO_FIN = "2026-06-24";
+
+/* ================= ESTADO ================= */
+
+let sistemaActivo = false;
+let ultimoTimbre = null;
+
+const reloj = document.getElementById("reloj");
+const fechaEl = document.getElementById("fecha");
+const estado = document.getElementById("estado");
+const sonido = document.getElementById("sonido");
+
+/* ================= FUNCIONES ================= */
+
+function esDiaLectivo(fecha) {
+    const dia = fecha.getDay();
+    if (dia === 0 || dia === 6) return false;
+
+    const iso = fecha.toISOString().split("T")[0];
+    if (iso < CURSO_INICIO || iso > CURSO_FIN) return false;
+
+    if (iso >= "2025-12-20" && iso <= "2026-01-07") return false;
+    if (iso >= "2026-03-27" && iso <= "2026-04-06") return false;
+
+    return !FESTIVOS.has(iso);
+}
+
+function actualizarReloj() {
+    const ahora = new Date();
+    reloj.textContent = ahora.toLocaleTimeString("es-ES");
+    fechaEl.textContent = ahora.toLocaleDateString("es-ES", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+
+    comprobarTimbre(ahora);
+}
+
+function comprobarTimbre(ahora) {
+    if (!sistemaActivo || document.hidden) return;
+
+    const hora = ahora.toTimeString().slice(0,5);
+    const minutoClave = ahora.toISOString().slice(0,16);
+
+    if (
+        ahora.getSeconds() === 0 &&
+        esDiaLectivo(ahora) &&
+        HORAS_TIMBRE.has(hora) &&
+        ultimoTimbre !== minutoClave
+    ) {
+        ultimoTimbre = minutoClave;
+        sonarTimbre();
+    }
+}
+
+function sonarTimbre() {
+    estado.textContent = "🔔 Timbre sonando";
+    estado.className = "sonando";
+
+    sonido.currentTime = 0;
+    sonido.play(
